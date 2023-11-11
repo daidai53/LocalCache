@@ -111,6 +111,31 @@ func (l *LocalCacheV1) SafeOperate(key string, f func(c LocalCache) error) error
 	return f(l)
 }
 
+func (l *LocalCacheV1) NLTTL(key string) (int, error) {
+	hash := l.hash(key)
+	if hash > len(l.bucket) {
+		return 0, ErrCodeWrongBucketHash
+	}
+	bucket := l.bucket[hash]
+	if !bucket.valid() {
+		return 0, ErrCodeBadCache
+	}
+	db, ok := bucket.bucketMap[key]
+	if !ok {
+		return 0, ErrCodeRecordNotFound
+	}
+	switch db.expireTime {
+	case time.UnixMilli(0):
+		return 0, ErrCodeNoExpireTime
+	default:
+		if remain := int(db.expireTime.Sub(time.Now()).Seconds()); remain > 0 {
+			return remain, nil
+		} else {
+			return 0, ErrCodeNoExpireTime
+		}
+	}
+}
+
 func (l *LocalCacheV1) NLGet(key string) ([]byte, error) {
 	hash := l.hash(key)
 	if hash > len(l.bucket) {
