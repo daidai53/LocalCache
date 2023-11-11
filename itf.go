@@ -19,6 +19,7 @@ type LocalCache interface {
 }
 
 type noLock interface {
+	SafeOperate(key string, f func(c LocalCache) error) error
 	NLGet(key string) ([]byte, error)
 	NLSet(key string, data []byte, expire time.Duration) error
 }
