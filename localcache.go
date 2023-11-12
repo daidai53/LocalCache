@@ -2,7 +2,6 @@
 package cache
 
 import (
-	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
@@ -34,8 +33,8 @@ func NewLocalCacheV1(bucketDepth int) LocalCache {
 		bucketDepth: bucketDepth,
 		bucket:      make([]localCacheBucket, bucketDepth),
 	}
-	for _, lcb := range lc.bucket {
-		lcb.bucketMap = make(map[string]dataBlock)
+	for index := range lc.bucket {
+		lc.bucket[index].bucketMap = make(map[string]dataBlock)
 	}
 	go monitor(lc)
 	return lc
@@ -100,15 +99,18 @@ func (l *LocalCacheV1) SafeOperate(key string, f func(c LocalCache) error) error
 	if !bucket.valid() {
 		return ErrCodeBadCache
 	}
-	bucket.mu.RLock()
+	bucket.mu.Lock()
 	db, ok := bucket.bucketMap[key]
-	bucket.mu.RUnlock()
-	if !ok {
-		return ErrCodeRecordNotFound
+	if ok {
+		bucket.mu.Unlock()
+		db.mu.Lock()
+		defer db.mu.Unlock()
+		return f(l)
+	} else {
+		bucket.bucketMap[key] = dataBlock{}
+		defer bucket.mu.Unlock()
+		return f(l)
 	}
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	return f(l)
 }
 
 func (l *LocalCacheV1) NLTTL(key string) (int, error) {
@@ -182,7 +184,7 @@ func (l *LocalCacheV1) hash(key string) int {
 	if err != nil {
 		return -1
 	}
-	return int(hash32.Sum32()) / l.bucketDepth
+	return int(hash32.Sum32()) % l.bucketDepth
 }
 
 func (l *localCacheBucket) valid() bool {
@@ -200,6 +202,5 @@ func monitor(lc *LocalCacheV1) {
 	for {
 		<-ticker.C
 		//todo:implement monitor
-		fmt.Println("核查一次")
 	}
 }
